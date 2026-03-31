@@ -1,0 +1,72 @@
+/// ============================================================
+/// SQLite Data Types — Keep It Simple
+/// ============================================================
+///
+/// SQLite only has 5 storage types:
+///
+/// ┌────────────┬──────────────────────────────────────────────┐
+/// │ SQLite     │ Dart Equivalent                              │
+/// ├────────────┼──────────────────────────────────────────────┤
+/// │ INTEGER    │ int (also used for bool: 0=false, 1=true)    │
+/// │ REAL       │ double                                       │
+/// │ TEXT       │ String                                       │
+/// │ BLOB       │ Uint8List (raw bytes, like images)           │
+/// │ NULL       │ null                                         │
+/// └────────────┴──────────────────────────────────────────────┘
+///
+/// IMPORTANT: SQLite does NOT have:
+///   - bool    → Use INTEGER (0 or 1)
+///   - DateTime → Use TEXT (ISO 8601 string) or INTEGER (milliseconds)
+///   - List    → Use TEXT (store as JSON string)
+///   - Map     → Use TEXT (store as JSON string)
+///
+/// WHY store DateTime as TEXT?
+/// → ISO 8601 format ("2024-01-15T10:30:00.000") is:
+///   1. Human readable in the database
+///   2. Sortable (alphabetical order = chronological order)
+///   3. Easy to parse back: DateTime.parse(text)
+
+Future<void> dataTypesExample() async {
+  final db = await openDatabase(
+    join(await getDatabasesPath(), 'types_demo.db'),
+    version: 1,
+    onCreate: (db, version) async {
+      await db.execute('''
+        CREATE TABLE products (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          price REAL NOT NULL,
+          is_available INTEGER NOT NULL DEFAULT 1,
+          description TEXT,
+          image BLOB,
+          created_at TEXT NOT NULL
+        )
+      ''');
+      // DEFAULT 1 → If you don't provide a value, it defaults to 1 (true)
+    },
+  );
+
+  // Insert with different data types
+  await db.insert('products', {
+    'name': 'Flutter Book',            // TEXT → String
+    'price': 29.99,                     // REAL → double
+    'is_available': 1,                  // INTEGER → bool (1 = true)
+    'description': null,                // NULL → allowed because no NOT NULL
+    'image': null,                      // BLOB → null for now
+    'created_at': DateTime.now().toIso8601String(), // TEXT → DateTime as string
+  });
+
+  // Reading and converting back
+  final rows = await db.query('products');
+  for (final row in rows) {
+    final String name = row['name'] as String;
+    final double price = row['price'] as double;
+    final bool isAvailable = (row['is_available'] as int) == 1; // int → bool
+    final String? description = row['description'] as String?;  // nullable
+    final DateTime createdAt = DateTime.parse(row['created_at'] as String);
+
+    print('$name: \$$price, available: $isAvailable, created: $createdAt');
+  }
+
+  await db.close();
+}
