@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:sqflite_learning/first_db/first_db.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await myFirstDatabase();
   runApp(const MyApp());
 }
 

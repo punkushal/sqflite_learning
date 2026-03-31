@@ -1,0 +1,141 @@
+/// ============================================================
+/// DATABASE LIFECYCLE — When does each callback fire?
+/// ============================================================
+///
+/// Imagine this timeline:
+///
+/// User installs app (v1) → onCreate(db, 1) → onOpen(db)
+/// User opens app again   →                   onOpen(db)
+/// User opens app again   →                   onOpen(db)
+/// User updates to v2     → onUpgrade(db, 1, 2) → onOpen(db)
+/// User opens app again   →                        onOpen(db)
+/// User updates to v3     → onUpgrade(db, 2, 3) → onOpen(db)
+///
+/// KEY INSIGHT:
+/// - onCreate:    Runs ONCE in the database's entire lifetime (fresh install)
+/// - onUpgrade:   Runs when version number INCREASES (app update with DB changes)
+/// - onOpen:      Runs EVERY TIME the database is opened
+/// - onDowngrade: Runs when version number DECREASES (rare, mostly for dev)
+
+Future<Database> lifecycleExample() async {
+  final path = join(await getDatabasesPath(), 'lifecycle.db');
+
+  return await openDatabase(
+    path,
+    version: 2, // ← Current version of our database schema
+
+    // ──────────────────────────────────────
+    // onCreate: Called when database file doesn't exist
+    // ──────────────────────────────────────
+    // Parameters:
+    //   db      → The database instance (use it to create tables)
+    //   version → The version number you passed above (2 in this case)
+    //
+    // WHEN: Fresh install. The .db file doesn't exist on disk yet.
+    // WHY:  You need to create ALL your tables from scratch.
+    //       Always create tables for the LATEST version here.
+    onCreate: (Database db, int version) async {
+      print('🟢 onCreate called with version: $version');
+
+      // Create ALL tables as they should be in the LATEST version
+      await db.execute('''
+        CREATE TABLE users (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          email TEXT NOT NULL UNIQUE,
+          age INTEGER,
+          created_at TEXT NOT NULL
+        )
+      ''');
+      // UNIQUE → No two users can have the same email
+
+      await db.execute('''
+        CREATE TABLE tasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          title TEXT NOT NULL,
+          is_completed INTEGER NOT NULL DEFAULT 0,
+          priority INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+      ''');
+      // FOREIGN KEY → Links tasks to users. Each task belongs to a user.
+      // ON DELETE CASCADE → If a user is deleted, all their tasks are also deleted.
+    },
+
+    // ──────────────────────────────────────
+    // onUpgrade: Called when version increases
+    // ──────────────────────────────────────
+    // Parameters:
+    //   db         → The database instance
+    //   oldVersion → The version that was stored on device (e.g., 1)
+    //   newVersion → The version you passed in openDatabase (e.g., 2)
+    //
+    // WHEN: User had version 1, now app code says version 2.
+    // WHY:  You need to ALTER existing tables without losing user data.
+    //       NEVER drop tables here unless absolutely necessary!
+    onUpgrade: (Database db, int oldVersion, int newVersion) async {
+      print('🟡 onUpgrade called from v$oldVersion to v$newVersion');
+
+      // PATTERN: Use sequential if-checks (not if-else!)
+      // WHY? A user might jump from v1 to v3 directly.
+      //       They need ALL migrations in between.
+      //       v1→v2 migration runs, THEN v2→v3 migration runs.
+
+      if (oldVersion < 2) {
+        // Migration: v1 → v2
+        // Added 'priority' column to tasks table
+        await db.execute(
+          'ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 0',
+        );
+        // DEFAULT 0 → Existing rows get priority = 0
+        // WHY DEFAULT? → Existing data doesn't have this column.
+        //                SQLite needs a value for existing rows.
+      }
+
+      if (oldVersion < 3) {
+        // Migration: v2 → v3 (future example)
+        // await db.execute('ALTER TABLE users ADD COLUMN avatar TEXT');
+      }
+    },
+
+    // ──────────────────────────────────────
+    // onOpen: Called EVERY TIME the database is opened
+    // ──────────────────────────────────────
+    // Parameters:
+    //   db → The database instance
+    //
+    // WHEN: Every single time openDatabase() completes successfully.
+    // WHY:  Perfect place for:
+    //       1. Enabling foreign keys (disabled by default in SQLite!)
+    //       2. Running integrity checks
+    //       3. Setting up PRAGMAs (database settings)
+    onOpen: (Database db) async {
+      print('🔵 onOpen called');
+
+      // CRITICAL: Enable foreign key support
+      // WHY? → SQLite has foreign keys DISABLED by default!
+      //        Without this, ON DELETE CASCADE won't work,
+      //        and you can insert invalid foreign key references.
+      await db.execute('PRAGMA foreign_keys = ON');
+    },
+
+    // ──────────────────────────────────────
+    // onDowngrade: Called when version DECREASES
+    // ──────────────────────────────────────
+    // WHEN: Current DB is version 3, but app code says version 2.
+    //       This usually happens during development when you rollback.
+    // DEFAULT BEHAVIOR: Throws an error (crashes the app).
+    //
+    // Option 1: Delete and recreate (DESTROYS ALL DATA!)
+    // onDowngrade: onDatabaseDowngradeDelete,
+    //
+    // Option 2: Custom handling
+    // onDowngrade: (db, oldVersion, newVersion) async { ... },
+    //
+    // In PRODUCTION: You should almost never decrease the version.
+    //                Just keep incrementing.
+    onDowngrade: onDatabaseDowngradeDelete, // Built-in helper that recreates DB
+  );
+}
