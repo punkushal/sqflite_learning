@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:sqflite_learning/clean_code_level1/transaction_example.dart';
 import 'package:sqflite_learning/first_db/first_db.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await myFirstDatabase();
+  await transactionExamples();
   runApp(const MyApp());
 }
 
