@@ -68,15 +68,27 @@ class DatabaseHelper {
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: _onOpen,
+      onConfigure: _onConfigure,
       onDowngrade: onDatabaseDowngradeDelete,
     );
   }
 
+  Future<void> _onConfigure(Database db) async {
+    // Enable foreign keys (required on every open!)
+    await db.execute('PRAGMA foreign_keys = ON');
+    // Optional: Enable WAL mode for better concurrent read performance
+    // WHY WAL? → Allows reads and writes to happen simultaneously
+    //            instead of blocking each other
+    await db.execute('PRAGMA journal_mode = WAL');
+    await db.execute('PRAGMA busy_timeout = 5000');
+  }
+
   /// Create all tables (fresh install)
   Future<void> _onCreate(Database db, int version) async {
-    if (kDebugMode) print('🟢 Creating database v$version');
+    if (kDebugMode) print('Creating database v$version');
 
     // Use a batch for better performance when creating multiple tables
+    // otherwise if only one table is being created then use db.transaction((txn)){}
     final batch = db.batch();
 
     // ── Users Table ──
@@ -192,29 +204,28 @@ class DatabaseHelper {
   }
 
   Future<void> _migrateV1toV2(Database db) async {
-    if (kDebugMode) print('  📦 Migrating v1 → v2');
+    if (kDebugMode) print(' Migrating v1 → v2');
     await db.execute(
       'ALTER TABLE $tableTasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 0',
     );
   }
 
   Future<void> _migrateV2toV3(Database db) async {
-    if (kDebugMode) print('  📦 Migrating v2 → v3');
+    if (kDebugMode) print(' Migrating v2 → v3');
     await db.execute('ALTER TABLE $tableTasks ADD COLUMN completed_at TEXT');
     await db.execute('ALTER TABLE $tableUsers ADD COLUMN avatar_url TEXT');
   }
 
   /// Configure database on every open
   Future<void> _onOpen(Database db) async {
-    // Enable foreign keys (required on every open!)
-    await db.execute('PRAGMA foreign_keys = ON');
+    if (kDebugMode) print('Database opened');
 
-    // Optional: Enable WAL mode for better concurrent read performance
-    // WHY WAL? → Allows reads and writes to happen simultaneously
-    //            instead of blocking each other
-    await db.execute('PRAGMA journal_mode = WAL');
-
-    if (kDebugMode) print('🔵 Database opened');
+    // Good place for verification, e.g. integrity checks or debug logs.
+    final result = await db.rawQuery('PRAGMA integrity_check');
+    final ok = result.isNotEmpty && result.first.values.first == 'ok';
+    if (!ok) {
+      throw Exception('Database integrity check failed');
+    }
   }
 
   /// Close database (call in app's dispose or when shutting down)
@@ -223,7 +234,7 @@ class DatabaseHelper {
     if (db != null && db.isOpen) {
       await db.close();
       _database = null;
-      if (kDebugMode) print('🔴 Database closed');
+      if (kDebugMode) print('Database closed');
     }
   }
 
@@ -232,6 +243,6 @@ class DatabaseHelper {
     await close();
     final path = join(await getDatabasesPath(), _databaseName);
     await databaseFactory.deleteDatabase(path);
-    if (kDebugMode) print('🗑️ Database deleted');
+    if (kDebugMode) print('Database deleted');
   }
 }
