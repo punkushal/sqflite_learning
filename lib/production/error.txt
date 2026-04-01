@@ -1,0 +1,6 @@
+my code is already enforcing data integrity correctly.
+This error means the tasks.user_id i'm inserting does not exist in users.id, so the foreign key fails.
+
+SQLite rejects it because:
+tasks.user_id has FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+No users row with id=1 exists at that moment

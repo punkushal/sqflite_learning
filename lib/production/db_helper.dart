@@ -79,8 +79,8 @@ class DatabaseHelper {
     // Optional: Enable WAL mode for better concurrent read performance
     // WHY WAL? → Allows reads and writes to happen simultaneously
     //            instead of blocking each other
-    await db.execute('PRAGMA journal_mode = WAL');
-    await db.execute('PRAGMA busy_timeout = 5000');
+    await db.rawQuery('PRAGMA journal_mode = WAL');
+    await db.rawQuery('PRAGMA busy_timeout = 5000');
   }
 
   /// Create all tables (fresh install)
