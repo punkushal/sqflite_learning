@@ -28,7 +28,7 @@ abstract class BaseRepository<T> {
   Map<String, dynamic> toMap(T item);
 
   /// Get the database instance
-  Future<Database> get _db => _dbHelper.database;
+  Future<Database> get database => _dbHelper.database;
 
   /// Generic: Get all items
   Future<List<T>> getAll({
@@ -37,7 +37,7 @@ abstract class BaseRepository<T> {
     int? offset,
     DatabaseExecutor? executor,
   }) async {
-    final exec = executor ?? await _db;
+    final exec = executor ?? await database;
     final maps = await exec.query(
       tableName,
       orderBy: orderBy,
@@ -49,7 +49,7 @@ abstract class BaseRepository<T> {
 
   /// Generic: Get item by ID
   Future<T?> getById(int id, {DatabaseExecutor? executor}) async {
-    final exec = executor ?? await _db;
+    final exec = executor ?? await database;
     final maps = await exec.query(
       tableName,
       where: 'id = ?',
@@ -62,7 +62,7 @@ abstract class BaseRepository<T> {
 
   /// Generic: Insert item
   Future<int> insert(T item, {DatabaseExecutor? executor}) async {
-    final exec = executor ?? await _db;
+    final exec = executor ?? await database;
     return await exec.insert(
       tableName,
       toMap(item),
@@ -72,7 +72,7 @@ abstract class BaseRepository<T> {
 
   /// Generic: Update item
   Future<int> update(T item, int id, {DatabaseExecutor? executor}) async {
-    final exec = executor ?? await _db;
+    final exec = executor ?? await database;
     return await exec.update(
       tableName,
       toMap(item),
@@ -83,13 +83,13 @@ abstract class BaseRepository<T> {
 
   /// Generic: Delete item
   Future<int> delete(int id, {DatabaseExecutor? executor}) async {
-    final exec = executor ?? await _db;
+    final exec = executor ?? await database;
     return await exec.delete(tableName, where: 'id = ?', whereArgs: [id]);
   }
 
   /// Generic: Count all items
   Future<int> count({DatabaseExecutor? executor}) async {
-    final exec = executor ?? await _db;
+    final exec = executor ?? await database;
     final result = await exec.rawQuery(
       'SELECT COUNT(*) as count FROM $tableName',
     );
@@ -98,7 +98,7 @@ abstract class BaseRepository<T> {
 
   /// Generic: Delete all items
   Future<int> deleteAll({DatabaseExecutor? executor}) async {
-    final exec = executor ?? await _db;
+    final exec = executor ?? await database;
     return await exec.delete(tableName);
   }
 }
