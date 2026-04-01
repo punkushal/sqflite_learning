@@ -1,0 +1,61 @@
+/// ============================================================
+/// CHEAT SHEET — Copy-paste reference
+/// ============================================================
+
+// ── Setup ──
+// final db = await openDatabase(path, version: N, onCreate: ..., onUpgrade: ...);
+
+// ── INSERT ──
+// final id = await db.insert('table', {'col': 'val'});
+// final id = await db.rawInsert('INSERT INTO table (col) VALUES (?)', ['val']);
+
+// ── SELECT ──
+// final rows = await db.query('table', where: 'id = ?', whereArgs: [1]);
+// final rows = await db.rawQuery('SELECT * FROM table WHERE id = ?', [1]);
+
+// ── UPDATE ──
+// final count = await db.update('table', {'col': 'new'}, where: 'id=?', whereArgs: [1]);
+// final count = await db.rawUpdate('UPDATE table SET col=? WHERE id=?', ['new', 1]);
+
+// ── DELETE ──
+// final count = await db.delete('table', where: 'id = ?', whereArgs: [1]);
+// final count = await db.rawDelete('DELETE FROM table WHERE id = ?', [1]);
+
+// ── TRANSACTION ──
+// await db.transaction((txn) async { await txn.insert(...); });
+
+// ── BATCH ──
+// final batch = db.batch();
+// batch.insert(...); batch.insert(...);
+// await batch.commit();
+
+// ── COUNT ──
+// final count = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM table'));
+
+// ── EXISTS ──
+// final exists = (await db.query('table', where: 'id=?', whereArgs: [1])).isNotEmpty;
+
+// ── PRAGMA ──
+// await db.execute('PRAGMA foreign_keys = ON');
+// await db.execute('PRAGMA journal_mode = WAL');
+
+/// ── LIFECYCLE ──
+/// onCreate:    Fresh install → Create all tables
+/// onUpgrade:   Version increased → ALTER/ADD tables (migrations)
+/// onOpen:      Every time → Enable PRAGMAs, checks
+/// onDowngrade: Version decreased → Usually delete & recreate (dev only)
+///
+/// ── WHEN TO INDEX ──
+/// ✅ Columns in WHERE, ORDER BY, JOIN
+/// ✅ High cardinality (many unique values)
+/// ✅ Tables > 1000 rows
+/// ❌ Small tables, rarely queried columns, bool-like columns
+///
+/// ── WHEN TO USE LOOKUP MAP ──
+/// ✅ Small datasets read frequently
+/// ✅ Need instant access by ID
+/// ❌ Large datasets or frequently changing data
+///
+/// ── TRANSACTION vs BATCH ──
+/// Transaction: Need to read between writes, all-or-nothing
+/// Batch: Fire-and-forget bulk operations, slightly faster

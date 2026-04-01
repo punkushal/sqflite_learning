@@ -1,0 +1,180 @@
+/// ============================================================
+/// PRAGMA — Database Settings
+/// ============================================================
+
+Future<void> pragmaExamples(Database db) async {
+  // ── WAL Mode (Write-Ahead Logging) ──
+  // DEFAULT mode: journal (readers block writers and vice versa)
+  // WAL mode: readers and writers can work simultaneously
+  // WHY? → Better performance in apps with concurrent reads/writes
+  await db.execute('PRAGMA journal_mode = WAL');
+
+  // ── Foreign Keys ──
+  // Must be enabled on EVERY connection (not stored permanently)
+  await db.execute('PRAGMA foreign_keys = ON');
+
+  // Check if foreign keys are enabled
+  final fkResult = await db.rawQuery('PRAGMA foreign_keys');
+  print('Foreign keys enabled: ${fkResult.first.values.first == 1}');
+
+  // ── Synchronous Mode ──
+  // FULL:   Safest, slowest (default)
+  // NORMAL: Good balance of safety and speed
+  // OFF:    Fastest, risk of corruption on crash
+  await db.execute('PRAGMA synchronous = NORMAL');
+
+  // ── Cache Size ──
+  // Number of pages to keep in memory (default: -2000 = ~2MB)
+  // Negative value = kilobytes, Positive = pages
+  await db.execute('PRAGMA cache_size = -4000'); // ~4MB cache
+
+  // ── Page Size ──
+  // Must be set BEFORE creating any tables
+  // Larger pages = better for large rows, worse for small rows
+  // await db.execute('PRAGMA page_size = 4096'); // 4KB pages
+
+  // ── Integrity Check ──
+  // Verifies the database is not corrupted
+  final integrity = await db.rawQuery('PRAGMA integrity_check');
+  print('Integrity: ${integrity.first.values.first}'); // Should print "ok"
+
+  // ── Get Database Info ──
+  final tableList = await db.rawQuery(
+    "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+  );
+  print('Tables: ${tableList.map((t) => t['name']).toList()}');
+}
+
+/// ============================================================
+/// Complex Queries — JOINs, Subqueries, Aggregations
+/// ============================================================
+
+Future<void> complexQueryExamples(Database db) async {
+  // ── INNER JOIN: Tasks with their category names ──
+  // Only returns tasks that HAVE a category
+  final tasksWithCategories = await db.rawQuery('''
+    SELECT 
+      t.id,
+      t.title,
+      t.priority,
+      c.name as category_name,
+      c.color as category_color
+    FROM tasks t
+    INNER JOIN categories c ON t.category_id = c.id
+    WHERE t.user_id = ? AND t.is_completed = 0
+    ORDER BY t.priority DESC, t.created_at DESC
+  ''', [1]);
+
+  // ── LEFT JOIN: All tasks, even those without a category ──
+  final allTasksWithOptionalCategory = await db.rawQuery('''
+    SELECT 
+      t.*,
+      COALESCE(c.name, 'Uncategorized') as category_name
+    FROM tasks t
+    LEFT JOIN categories c ON t.category_id = c.id
+    WHERE t.user_id = ?
+  ''', [1]);
+  // COALESCE(a, b) → Returns a if not null, otherwise b
+  // So if category_name is null, it shows 'Uncategorized'
+
+  // ── Subquery: Users who have more than 5 tasks ──
+  final activeUsers = await db.rawQuery('''
+    SELECT u.* 
+    FROM users u
+    WHERE (
+      SELECT COUNT(*) FROM tasks t WHERE t.user_id = u.id
+    ) > 5
+  ''');
+
+  // ── GROUP BY with HAVING: Categories with task counts ──
+  final categoryStats = await db.rawQuery('''
+    SELECT 
+      c.name,
+      COUNT(t.id) as task_count,
+      SUM(CASE WHEN t.is_completed = 1 THEN 1 ELSE 0 END) as done_count,
+      ROUND(
+        AVG(CASE WHEN t.is_completed = 1 THEN 1.0 ELSE 0.0 END) * 100, 
+        1
+      ) as completion_percentage
+    FROM categories c
+    LEFT JOIN tasks t ON t.category_id = c.id
+    GROUP BY c.id
+    HAVING task_count > 0
+    ORDER BY completion_percentage DESC
+  ''');
+  // GROUP BY c.id → One row per category
+  // HAVING task_count > 0 → Only categories that have tasks
+  // ROUND(..., 1) → Round to 1 decimal place
+
+  // ── Window Functions (SQLite 3.25+): Running totals ──
+  // Note: Might not work on older Android devices
+  // final runningTotal = await db.rawQuery('''
+  //   SELECT
+  //     date(created_at) as day,
+  //     COUNT(*) as daily_count,
+  //     SUM(COUNT(*)) OVER (ORDER BY date(created_at)) as running_total
+  //   FROM tasks
+  //   WHERE user_id = ?
+  //   GROUP BY date(created_at)
+  //   ORDER BY day
+  // ''', [1]);
+}
+
+/// ============================================================
+/// Storing Complex Data (Lists, Maps, JSON)
+/// ============================================================
+
+import 'dart:convert';
+
+class Note {
+  final int? id;
+  final String title;
+  final List<String> tags;           // Stored as JSON string
+  final Map<String, dynamic> metadata; // Stored as JSON string
+
+  const Note({
+    this.id,
+    required this.title,
+    this.tags = const [],
+    this.metadata = const {},
+  });
+
+  factory Note.fromMap(Map<String, dynamic> map) {
+    return Note(
+      id: map['id'] as int?,
+      title: map['title'] as String,
+      // Decode JSON string back to List
+      tags: map['tags'] != null
+          ? List<String>.from(jsonDecode(map['tags'] as String))
+          : [],
+      // Decode JSON string back to Map
+      metadata: map['metadata'] != null
+          ? Map<String, dynamic>.from(jsonDecode(map['metadata'] as String))
+          : {},
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      if (id != null) 'id': id,
+      'title': title,
+      // Encode List/Map as JSON strings for storage
+      'tags': jsonEncode(tags),         // ["tag1","tag2"] → '["tag1","tag2"]'
+      'metadata': jsonEncode(metadata), // {key: val} → '{"key":"val"}'
+    };
+  }
+}
+
+// Table creation:
+// CREATE TABLE notes (
+//   id INTEGER PRIMARY KEY AUTOINCREMENT,
+//   title TEXT NOT NULL,
+//   tags TEXT NOT NULL DEFAULT '[]',
+//   metadata TEXT NOT NULL DEFAULT '{}'
+// )
+//
+// LIMITATION: You can't query INSIDE JSON columns efficiently.
+// "Find notes with tag 'flutter'" would require:
+//   WHERE tags LIKE '%"flutter"%'  ← This is SLOW (full scan, no index)
+//
+// If you need to query by tags frequently, use a junction table instead!
